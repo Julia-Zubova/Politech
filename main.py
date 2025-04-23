@@ -1,0 +1,183 @@
+import pygame
+import sys
+import random
+from pygame.locals import QUIT
+
+pygame.init()
+
+CELL_SIZE = 40
+FPS = 30
+
+WHITE = (255, 255, 255)
+GRAY = (192, 192, 192)
+BLACK = (0, 0, 0)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+
+#Создание окна
+screen = pygame.display.set_mode((800, 600))
+pygame.display.set_caption("Сапер")
+
+#Класс клетки на игровом поле
+class Cell:
+    def __init__(self, row, col):
+        self.row = row
+        self.col = col
+        self.is_mine = False
+        self.is_revealed = False
+        self.is_flagged = False
+        self.is_questioned = False
+        self.adjacent_mines = 0
+
+    def draw(self):
+        if self.is_revealed:
+            pygame.draw.rect(screen, GRAY, (self.col * CELL_SIZE, self.row * CELL_SIZE, CELL_SIZE, CELL_SIZE))
+            if self.is_mine:
+                pygame.draw.circle(screen, RED, (self.col * CELL_SIZE + CELL_SIZE // 2, self.row * CELL_SIZE + CELL_SIZE // 2), CELL_SIZE // 4)
+            elif self.adjacent_mines > 0:
+                font = pygame.font.Font(None, 30)
+                text = font.render(str(self.adjacent_mines), True, BLACK)
+                screen.blit(text, (self.col * CELL_SIZE + CELL_SIZE // 3, self.row * CELL_SIZE + CELL_SIZE // 3))
+        else:
+            pygame.draw.rect(screen, WHITE, (self.col * CELL_SIZE, self.row * CELL_SIZE, CELL_SIZE, CELL_SIZE))
+            if self.is_flagged:
+                font = pygame.font.Font(None, 30)
+                text = font.render("F", True, BLACK)
+                screen.blit(text, (self.col * CELL_SIZE + CELL_SIZE // 3, self.row * CELL_SIZE + CELL_SIZE // 3))
+            elif self.is_questioned:
+                font = pygame.font.Font(None, 30)
+                text = font.render("?", True, BLACK)
+                screen.blit(text, (self.col * CELL_SIZE + CELL_SIZE // 3, self.row * CELL_SIZE + CELL_SIZE // 3))
+
+#Генерация поля с клетками
+def create_grid(grid_width, grid_height):
+    grid = [[Cell(row, col) for col in range(grid_width)] for row in range(grid_height)]
+    return grid
+
+#Расстановка мин на поле
+def place_mines(grid, mines):
+    mine_count = 0
+    grid_height = len(grid)
+    grid_width = len(grid[0])
+    while mine_count < mines:
+        row = random.randint(0, grid_height - 1)
+        col = random.randint(0, grid_width - 1)
+        if not grid[row][col].is_mine:
+            grid[row][col].is_mine = True
+            mine_count += 1
+    return grid
+
+#Обновление счетчика мин для каждой клетки
+def update_adjacent_mines(grid):
+    for row in range(len(grid)):
+        for col in range(len(grid[0])):
+            if not grid[row][col].is_mine:
+                count = 0
+                for dr in [-1, 0, 1]:
+                    for dc in [-1, 0, 1]:
+                        if 0 <= row + dr < len(grid) and 0 <= col + dc < len(grid[0]) and grid[row + dr][col + dc].is_mine:
+                            count += 1
+                grid[row][col].adjacent_mines = count
+    return grid
+
+#Открытие клеток вокруг пустых клеток
+def flood_fill(grid, row, col):
+    if 0 <= row < len(grid) and 0 <= col < len(grid[0]) and not grid[row][col].is_revealed and not grid[row][col].is_flagged:
+        grid[row][col].is_revealed = True
+        if grid[row][col].adjacent_mines == 0:
+            for dr in [-1, 0, 1]:
+                for dc in [-1, 0, 1]:
+                    flood_fill(grid, row + dr, col + dc)
+
+#Проверка победы
+def check_win(grid):
+    for row in range(len(grid)):
+        for col in range(len(grid[0])):
+            if not grid[row][col].is_revealed and not grid[row][col].is_mine:
+                return False
+    return True
+
+#Выбор уровня сложности
+def choose_difficulty():
+    while True:
+        print("Выберите уровень сложности: ")
+        print("1. Легкий (10x10, 10 мин)")
+        print("2. Средний (16x16, 40 мин)")
+        print("3. Сложный (30x16, 99 мин)")
+        choice = input("Введите 1, 2 или 3: ")
+        if choice == "1":
+            return 10, 10, 10
+        elif choice == "2":
+            return 16, 16, 40
+        elif choice == "3":
+            return 30, 16, 99
+        else:
+            print("Некорректный выбор. Попробуйте снова.")
+
+#Показ сообщения
+def show_message(message, color):
+    font = pygame.font.Font(None, 74)
+    text = font.render(message, True, color)
+    text_rect = text.get_rect(center=(screen.get_width() / 2, screen.get_height() / 2))
+    screen.blit(text, text_rect)
+    pygame.display.flip()
+    pygame.time.delay(3000)
+
+#Главный игровой цикл
+def main():
+    grid_width, grid_height, mines = choose_difficulty()
+    screen = pygame.display.set_mode((grid_width * CELL_SIZE, grid_height * CELL_SIZE))
+    grid = create_grid(grid_width, grid_height)
+    grid = place_mines(grid, mines)
+    grid = update_adjacent_mines(grid)
+    game_over = False
+    win = False
+
+    while not game_over:
+        screen.fill(WHITE)
+
+        #Отображение клеток
+        for row in range(grid_height):
+            for col in range(grid_width):
+                grid[row][col].draw()
+
+        # Проверка победы
+        if check_win(grid):
+            win = True
+            game_over = True
+
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                x, y = pygame.mouse.get_pos()
+                row = y // CELL_SIZE
+                col = x // CELL_SIZE
+                if event.button == 1:  # Щелчок левой кнопкой мыши
+                    if not grid[row][col].is_flagged and not grid[row][col].is_questioned:
+                        if grid[row][col].is_mine:
+                            game_over = True
+                        else:
+                            flood_fill(grid, row, col)
+                elif event.button == 3:  # Щелчок правой кнопкой мыши
+                    if not grid[row][col].is_revealed:
+                        if grid[row][col].is_flagged:
+                            grid[row][col].is_flagged = False
+                            grid[row][col].is_questioned = True
+                        elif grid[row][col].is_questioned:
+                            grid[row][col].is_questioned = False
+                        else:
+                            grid[row][col].is_flagged = True
+
+        pygame.time.Clock().tick(FPS)
+
+    if win:
+        show_message("Вы победили!", GREEN)
+    else:
+        show_message("Вы проиграли!", RED)
+
+if __name__ == "__main__":
+    main()
